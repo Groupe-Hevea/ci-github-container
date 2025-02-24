@@ -94,7 +94,7 @@ on: # yamllint disable-line rule:truthy
           Needs input `build-secret-github-app-id` and secret `build-secret-github-app-key`.
         type: string
         required: false
-        default: "GITHUB_APP_TOKEN"
+        default: "APP_TOKEN_GITHUB"
       build-secret-github-app-id:
         description: |
           GitHub App ID to generate GitHub token to be passed as build secret env.
@@ -361,7 +361,7 @@ jobs:
         uses: actions/github-script@v7.0.1
         with:
           script: |
-            const githubAppTokenEnvName = 'GITHUB_APP_TOKEN';
+            const githubAppTokenEnvName = 'APP_TOKEN_GITHUB';
 
             let secretEnvs = `${{ matrix.image.secret-envs }}`;
             const githubAppToken = `${{ steps.generate-token.outputs.token }}`;
@@ -392,6 +392,8 @@ jobs:
 
       - id: build
         uses: ./self-workflow/actions/docker/build-image
+        env:
+          APP_TOKEN_GITHUB: ${{ steps.generate-token.outputs.token }}
         with:
           oci-registry: ${{ inputs.oci-registry }}
           oci-registry-username: ${{ inputs.oci-registry-username }}
