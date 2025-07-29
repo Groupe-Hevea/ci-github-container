@@ -393,4 +393,131 @@ jobs:
               await exec.exec('docker', ['manifest', 'inspect', cacheImage]);
             }
 
+  act-build-images-with-cache-mount:
+    name: Act - Build images with cache mount enabled
+    needs: arrange
+    uses: ./.github/workflows/docker-build-images.yml
+    secrets:
+      oci-registry-password: ${{ secrets.GITHUB_TOKEN }}
+      build-secret-github-app-key: ${{ secrets.CI_BOT_APP_PRIVATE_KEY }}
+    with:
+      cache-type: gha
+      images: |
+        [
+          {
+            "name": "test-cache-mount-auto",
+            "context": ".",
+            "dockerfile": "./tests/application/Dockerfile.cache-mount",
+            "target": "cache-mount-test",
+            "platforms": ["linux/amd64"],
+            "cache-mount-enabled": true
+          },
+          {
+            "name": "test-cache-mount-manual",
+            "context": ".",
+            "dockerfile": "./tests/application/Dockerfile.cache-mount",
+            "target": "cache-mount-test",
+            "platforms": ["linux/amd64"],
+            "cache-mount-enabled": true,
+            "cache-mount-map": {
+              "var-cache-apk": "/var/cache/apk",
+              "etc-apk-cache": "/etc/apk/cache",
+              "custom-build": "/tmp/build-cache"
+            }
+          }
+        ]
+
+  assert-build-images-with-cache-mount:
+    name: Assert - Build images with cache mount
+    needs: act-build-images-with-cache-mount
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: Assert - built images with cache mount output
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const assert = require("assert");
+
+            const builtImagesOutput = `${{ needs.act-build-images-with-cache-mount.outputs.built-images }}`;
+            assert(builtImagesOutput.length, `"built-images" output is empty`);
+
+            // Check if is valid Json
+            let builtImages = null;
+            try {
+              builtImages = JSON.parse(builtImagesOutput);
+            } catch (error) {
+              throw new Error(`"built-images" output is not a valid JSON: ${error}`);
+            }
+
+            const expectedCreatedImages = [
+              "test-cache-mount-auto",
+              "test-cache-mount-manual"
+            ];
+            assert(typeof builtImages === "object" && !Array.isArray(builtImages), `"built-images" output is not an object`);
+            assert.equal(Object.keys(builtImages).length, expectedCreatedImages.length, `"built-images" output does not contain ${expectedCreatedImages.length} images`);
+
+            for (const image of expectedCreatedImages) {
+              assert(builtImages[image], `"built-images" output does not contain "${image}" image`);
+
+              const imageData = builtImages[image];
+              assert.equal(imageData.name, image, `Image name mismatch for ${image}`);
+              assert.equal(imageData.registry, "ghcr.io", `Registry mismatch for ${image}`);
+              assert.match(imageData.digest, /^sha256:[0-9a-f]{64}$/, `Invalid digest for ${image}`);
+              assert(imageData.images.length > 0, `No images found for ${image}`);
+            }
+
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      - name: Assert - Test cache mount auto-discovery image functionality
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const assert = require("assert");
+
+            const image = `${{ fromJson(needs.act-build-images-with-cache-mount.outputs.built-images).test-cache-mount-auto.images[0] }}`;
+
+            console.log(`Testing cache mount auto-discovery image: ${image}`);
+            await exec.exec('docker', ['pull', image]);
+
+            const {
+              exitCode,
+              stdout,
+              stderr
+            } = await exec.getExecOutput('docker', ['manifest', 'inspect', '-v', image]);
+
+            if (exitCode !== 0 || stderr) {
+              throw new Error(`Failed to inspect manifest for image: ${image}: ${stderr || stdout}`);
+            }
+
+            console.log("✅ Auto-discovery cache mount build completed successfully");
+            console.log("   Cache mount validation was performed during build time");
+
+      - name: Assert - Test cache mount manual map image functionality
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const assert = require("assert");
+
+            const image = `${{ fromJson(needs.act-build-images-with-cache-mount.outputs.built-images).test-cache-mount-manual.images[0] }}`;
+
+            console.log(`Testing cache mount manual map image: ${image}`);
+            await exec.exec('docker', ['pull', image]);
+
+            const {
+              exitCode,
+              stdout,
+              stderr
+            } = await exec.getExecOutput('docker', ['manifest', 'inspect', '-v', image]);
+
+            if (exitCode !== 0 || stderr) {
+              throw new Error(`Failed to inspect manifest for image: ${image}: ${stderr || stdout}`);
+            }
+
+            console.log("✅ Manual cache map build completed successfully");
+            console.log("   Cache mount validation was performed during build time");
+
 # jscpd:ignore-end

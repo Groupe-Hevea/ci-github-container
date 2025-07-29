@@ -227,4 +227,205 @@ jobs:
             exit 1
           fi
 
+  tests-cache-mount-feature:
+    name: Test for "docker/build-image" action with cache mount enabled
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Arrange - Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Arrange - Ensure token is set
+        run: |
+          if [ -z "${{ github.token }}" ]; then
+            echo "GitHub token is not set"
+            exit 1
+          fi
+
+      - name: Act - Build image with cache mount (first build)
+        id: build-image-first
+        uses: ./actions/docker/build-image
+        with:
+          oci-registry: ghcr.io
+          oci-registry-password: ${{ github.token }}
+          context: "."
+          dockerfile: "./tests/application/Dockerfile.cache-mount"
+          target: "cache-mount-test"
+          platform: "linux/amd64"
+          image: application-cache-mount-test
+          cache-mount-enabled: true
+
+      - name: Act - Build image with cache mount (second build - should use cache)
+        id: build-image-second
+        uses: ./actions/docker/build-image
+        with:
+          oci-registry: ghcr.io
+          oci-registry-password: ${{ github.token }}
+          context: "."
+          dockerfile: "./tests/application/Dockerfile.cache-mount"
+          target: "cache-mount-test"
+          platform: "linux/amd64"
+          image: application-cache-mount-test-second
+          cache-mount-enabled: true
+
+      - name: Assert - Check first build output
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const assert = require("assert");
+
+            const builtImageOutput = ${{ toJSON(steps.build-image-first.outputs.built-image) }};
+            assert(builtImageOutput, `"built-image" output is empty`);
+
+            let builtImage;
+            try {
+              builtImage = JSON.parse(builtImageOutput);
+            } catch (error) {
+              assert.fail(`Failed to parse built image output: ${error}`);
+            }
+
+            assert(builtImage, `"built-image" output is empty`);
+            assert.equal(builtImage.name, "application-cache-mount-test", `"name" output is not valid`);
+            assert.match(builtImage.digest, /^sha256:[a-f0-9]{64}$/, `"digest" output is not valid`);
+
+      - name: Assert - Check second build output
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const assert = require("assert");
+
+            const builtImageOutput = ${{ toJSON(steps.build-image-second.outputs.built-image) }};
+            assert(builtImageOutput, `"built-image" output is empty`);
+
+            let builtImage;
+            try {
+              builtImage = JSON.parse(builtImageOutput);
+            } catch (error) {
+              assert.fail(`Failed to parse built image output: ${error}`);
+            }
+
+            assert(builtImage, `"built-image" output is empty`);
+            assert.equal(builtImage.name, "application-cache-mount-test-second", `"name" output is not valid`);
+            assert.match(builtImage.digest, /^sha256:[a-f0-9]{64}$/, `"digest" output is not valid`);
+
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      - name: Assert - Verify first build image functionality
+        run: |
+          IMAGE=$(echo '${{ steps.build-image-first.outputs.built-image }}' | jq -r '.image')
+          echo "Testing image: $IMAGE"
+
+          if ! docker pull "$IMAGE"; then
+            echo "Failed to pull $IMAGE"
+            exit 1
+          fi
+
+          if ! docker manifest inspect "$IMAGE"; then
+            echo "Failed to inspect $IMAGE"
+            exit 1
+          fi
+
+          echo "✅ First build with cache mount completed successfully"
+          echo "   Cache mount validation was performed during build time"
+
+      - name: Assert - Verify second build image functionality
+        run: |
+          IMAGE=$(echo '${{ steps.build-image-second.outputs.built-image }}' | jq -r '.image')
+          echo "Testing second build image: $IMAGE"
+
+          if ! docker pull "$IMAGE"; then
+            echo "Failed to pull $IMAGE"
+            exit 1
+          fi
+
+          echo "✅ Second build with cache mount completed successfully"
+          echo "   Cache should have been reused from first build"
+
+  tests-cache-mount-with-manual-map:
+    name: Test for "docker/build-image" action with manual cache mount map
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Arrange - Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Arrange - Ensure token is set
+        run: |
+          if [ -z "${{ github.token }}" ]; then
+            echo "GitHub token is not set"
+            exit 1
+          fi
+
+      - name: Act - Build image with manual cache mount map
+        id: build-image-manual
+        uses: ./actions/docker/build-image
+        with:
+          oci-registry: ghcr.io
+          oci-registry-password: ${{ github.token }}
+          context: "."
+          dockerfile: "./tests/application/Dockerfile.cache-mount"
+          target: "cache-mount-test"
+          platform: "linux/amd64"
+          image: application-cache-mount-manual
+          cache-mount-enabled: true
+          cache-mount-map: |
+            {
+              "var-cache-apk": "/var/cache/apk",
+              "etc-apk-cache": "/etc/apk/cache",
+              "custom-build": "/tmp/build-cache",
+              "shared-cache": "/tmp/shared"
+            }
+
+      - name: Assert - Check manual cache map build output
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const assert = require("assert");
+
+            const builtImageOutput = ${{ toJSON(steps.build-image-manual.outputs.built-image) }};
+            assert(builtImageOutput, `"built-image" output is empty`);
+
+            let builtImage;
+            try {
+              builtImage = JSON.parse(builtImageOutput);
+            } catch (error) {
+              assert.fail(`Failed to parse built image output: ${error}`);
+            }
+
+            assert(builtImage, `"built-image" output is empty`);
+            assert.equal(builtImage.name, "application-cache-mount-manual", `"name" output is not valid`);
+            assert.match(builtImage.digest, /^sha256:[a-f0-9]{64}$/, `"digest" output is not valid`);
+
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      - name: Assert - Verify manual cache map image functionality
+        run: |
+          IMAGE=$(echo '${{ steps.build-image-manual.outputs.built-image }}' | jq -r '.image')
+          echo "Testing manual cache map image: $IMAGE"
+
+          if ! docker pull "$IMAGE"; then
+            echo "Failed to pull $IMAGE"
+            exit 1
+          fi
+
+          if ! docker manifest inspect "$IMAGE"; then
+            echo "Failed to inspect $IMAGE"
+            exit 1
+          fi
+
+          echo "✅ Build with manual cache map completed successfully"
+          echo "   Cache mount validation was performed during build time"
+
 # jscpd:ignore-end

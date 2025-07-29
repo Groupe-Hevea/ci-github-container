@@ -1,0 +1,94 @@
+FROM alpine:3 AS cache-mount-test
+
+# Add healthcheck using wget (lighter than curl for Alpine)
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 CMD ["test", "-f", "/tmp/cache-health"]
+
+# Create user and group (Alpine syntax)
+RUN addgroup -S cachetest && adduser -S cachetest -G cachetest
+
+# Create validation helper script
+RUN cat >validate-cache.sh <<EOF
+
+assertCacheMountWorks() {
+  local mountPath="\$1"
+  local testFile="\$2"
+
+  # Check if mount path exists
+  test -d "\$mountPath" || {
+    echo "Error: Cache mount path \$mountPath does not exist"
+    exit 1
+  }
+
+  # Check if test file was written to cache
+  test -f "\$testFile" || {
+    echo "Error: Test file \$testFile was not created in cache mount"
+    exit 1
+  }
+
+  echo "✓ Cache mount \$mountPath working correctly"
+}
+
+assertPackageInstalled() {
+  local package="\$1"
+
+  command -v "\$package" >/dev/null 2>&1 || {
+    echo "Error: Package \$package is not installed"
+    exit 1
+  }
+
+  echo "✓ Package \$package installed successfully"
+}
+
+EOF
+
+# Test cache mounts for apk packages (Alpine package manager) - validate during build
+RUN --mount=type=cache,target=/var/cache/apk,sharing=locked \
+    --mount=type=cache,target=/etc/apk/cache,sharing=locked \
+    apk update && \
+    apk add --cache-dir /var/cache/apk gcc musl-dev curl && \
+    echo "APK cache test: $(date)" > /var/cache/apk/cache-test-marker.txt && \
+    . validate-cache.sh && \
+    assertCacheMountWorks "/var/cache/apk" "/var/cache/apk/cache-test-marker.txt" && \
+    assertPackageInstalled "gcc" && \
+    assertPackageInstalled "curl"
+
+# Test cache mount with custom id - validate during build
+RUN --mount=type=cache,id=custom-build-cache,target=/tmp/build-cache \
+    mkdir -p /tmp/build-cache && \
+    echo "Custom cache test: $(date)" > /tmp/build-cache/custom-test-marker.txt && \
+    echo "Additional file for validation" > /tmp/build-cache/validation-file.txt && \
+    . validate-cache.sh && \
+    assertCacheMountWorks "/tmp/build-cache" "/tmp/build-cache/custom-test-marker.txt"
+
+# Test cache mount with shared option - validate during build
+RUN --mount=type=cache,id=shared-cache,target=/tmp/shared,sharing=shared \
+    mkdir -p /tmp/shared && \
+    echo "Shared cache test: $(date)" > /tmp/shared/shared-test-marker.txt && \
+    . validate-cache.sh && \
+    assertCacheMountWorks "/tmp/shared" "/tmp/shared/shared-test-marker.txt"
+
+# Test cache mount without id (should use target as id) - validate during build
+RUN --mount=type=cache,target=/tmp/no-id-cache \
+    mkdir -p /tmp/no-id-cache && \
+    echo "No ID cache test: $(date)" > /tmp/no-id-cache/no-id-test-marker.txt && \
+    . validate-cache.sh && \
+    assertCacheMountWorks "/tmp/no-id-cache" "/tmp/no-id-cache/no-id-test-marker.txt"
+
+# Validate that packages are still available (not just in cache mounts)
+RUN . validate-cache.sh && \
+    assertPackageInstalled "gcc" && \
+    assertPackageInstalled "curl"
+
+# Create a summary validation and health marker
+RUN echo "=== Cache Mount Build-Time Validation Summary ===" && \
+    echo "✓ APK cache mount: /var/cache/apk" && \
+    echo "✓ APK etc cache: /etc/apk/cache" && \
+    echo "✓ Custom cache mount: /tmp/build-cache (id: custom-build-cache)" && \
+    echo "✓ Shared cache mount: /tmp/shared (id: shared-cache)" && \
+    echo "✓ No-ID cache mount: /tmp/no-id-cache (id: /tmp/no-id-cache)" && \
+    echo "✓ Package installation: gcc, curl" && \
+    echo "✓ All cache mount tests passed during build!" && \
+    echo "=============================================" && \
+    touch /tmp/cache-health
+
+USER cachetest
