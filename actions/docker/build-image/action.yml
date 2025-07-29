@@ -108,6 +108,26 @@ inputs:
       See <https://docs.docker.com/build/cache/backends>.
     default: "gha"
     required: false
+  cache-mount-enabled:
+    description: |
+      Enable cache mount support using buildkit-cache-dance.
+      When enabled, this will inject and extract cache mounts defined in the Dockerfile.
+    type: boolean
+    default: false
+    required: false
+  cache-mount-map:
+    description: |
+      Manual cache mount map in JSON format.
+      Example: {"var-cache-apt": "/var/cache/apt", "var-lib-apt": "/var/lib/apt"}
+      If not provided and cache-mount-enabled is true, the Dockerfile will be auto-discovered.
+    required: false
+    default: "{}"
+  cache-mount-dir:
+    description: |
+      Root directory where cache content is stored.
+      Only used when cache-mount-enabled is true and cache-mount-map is not provided.
+    default: "cache-mount"
+    required: false
 
 runs:
   using: "composite"
@@ -216,6 +236,7 @@ runs:
         platforms: ${{ inputs.platform }}
 
     - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      id: setup-buildx
       with:
         # FIXME: upgrade version when available (https://github.com/docker/buildx/releases)
         version: v0.25.0
@@ -228,6 +249,89 @@ runs:
         registry: ${{ inputs.oci-registry }}
         username: ${{ inputs.oci-registry-username }}
         password: ${{ inputs.oci-registry-password }}
+
+    - id: cache-mount-key
+      if: inputs.cache-mount-enabled == 'true'
+      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+      with:
+        script: |
+          // Use the exact same cache strategy as docker-build-cache-config-action
+          const cacheFrom = `${{ steps.cache.outputs.cache-from }}`;
+          const imageName = `${{ inputs.image }}` || 'default';
+          const platformSlug = `${{ steps.slugify-platform.outputs.result }}`;
+
+          core.info(`Cache from: ${cacheFrom}`);
+
+          // Extract all cache references from cache-from
+          const cacheRefs = [];
+          const refMatches = cacheFrom.matchAll(/ref=[^:]+:([^,\s]+)/g);
+          for (const match of refMatches) {
+            cacheRefs.push(match[1]);
+          }
+
+          core.info(`Extracted cache refs: ${JSON.stringify(cacheRefs)}`);
+
+          // If no refs found, disable cache mount (shouldn't happen with int128 action)
+          if (cacheRefs.length === 0) {
+            core.warning('No cache refs found in cache-from output, disabling cache mount');
+            core.setOutput('cache-key', '');
+            core.setOutput('restore-keys', '');
+            core.setOutput('cache-paths', '');
+            return;
+          }
+
+          // Use first ref as primary key, others as restore keys
+          const primaryRef = cacheRefs[0];
+          const cacheKey = `cache-mount-${primaryRef}`;
+
+          // Generate restore keys from additional refs
+          const restoreKeys = cacheRefs.slice(1).map(ref =>
+            `cache-mount-${ref}`
+          );
+
+          // Determine cache paths based on cache-mount-map
+          const cacheMap = `${{ inputs.cache-mount-map }}`;
+          let cachePaths;
+
+          if (cacheMap === '{}' || cacheMap === '') {
+            // Auto-discovery mode: use cache-mount-dir
+            cachePaths = `${{ inputs.cache-mount-dir }}`;
+          } else {
+            // Manual mapping mode: extract all source paths from cache-map
+            try {
+              const mapObj = JSON.parse(cacheMap);
+              const sourcePaths = Object.keys(mapObj);
+              cachePaths = sourcePaths.join('\n');
+            } catch (e) {
+              core.warning(`Failed to parse cache-mount-map: ${e}. Falling back to cache-mount-dir.`);
+              cachePaths = `${{ inputs.cache-mount-dir }}`;
+            }
+          }
+
+          core.info(`Cache key: ${cacheKey}`);
+          core.info(`Restore keys: ${JSON.stringify(restoreKeys)}`);
+          core.info(`Cache paths: ${cachePaths}`);
+
+          core.setOutput('cache-key', cacheKey);
+          core.setOutput('restore-keys', restoreKeys.join('\n'));
+          core.setOutput('cache-paths', cachePaths);
+
+    - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      if: inputs.cache-mount-enabled == 'true' && steps.cache-mount-key.outputs.cache-key != ''
+      id: cache-mount
+      with:
+        path: ${{ steps.cache-mount-key.outputs.cache-paths }}
+        key: ${{ steps.cache-mount-key.outputs.cache-key }}
+        restore-keys: ${{ steps.cache-mount-key.outputs.restore-keys }}
+
+    - uses: reproducible-containers/buildkit-cache-dance@5b81f4d29dc8397a7d341dba3aeecc7ec54d6361 # v3.3.0
+      if: inputs.cache-mount-enabled == 'true' && steps.cache-mount-key.outputs.cache-key != ''
+      with:
+        builder: ${{ steps.setup-buildx.outputs.name }}
+        cache-dir: ${{ inputs.cache-mount-dir }}
+        dockerfile: ${{ inputs.context }}/${{ inputs.dockerfile }}
+        cache-map: ${{ inputs.cache-mount-map }}
+        skip-extraction: ${{ steps.cache-mount.outputs.cache-hit }}
 
     - id: build
       uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0

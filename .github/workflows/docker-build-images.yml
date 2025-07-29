@@ -120,6 +120,28 @@ on: # yamllint disable-line rule:truthy
         type: boolean
         default: true
         required: false
+      cache-mount-enabled:
+        description: |
+          Enable cache mount support using buildkit-cache-dance.
+          When enabled, this will inject and extract cache mounts defined in the Dockerfile.
+        type: boolean
+        default: false
+        required: false
+      cache-mount-map:
+        type: string
+        description: |
+          Manual cache mount map in JSON format.
+          Example: {"var-cache-apt": "/var/cache/apt", "var-lib-apt": "/var/lib/apt"}
+          If not provided and cache-mount-enabled is true, the Dockerfile will be auto-discovered.
+        required: false
+        default: "{}"
+      cache-mount-dir:
+        description: |
+          Root directory where cache content is stored.
+          Only used when cache-mount-enabled is true.
+        type: string
+        default: "cache-mount"
+        required: false
     secrets:
       oci-registry-password:
         description: |
@@ -418,6 +440,9 @@ jobs:
           secret-envs: ${{ steps.prepare-secret-envs.outputs.secret-envs }}
           secrets: ${{ secrets.build-secrets }}
           cache-type: ${{ inputs.cache-type }}
+          cache-mount-enabled: ${{ inputs.cache-mount-enabled }}
+          cache-mount-map: ${{ inputs.cache-mount-map }}
+          cache-mount-dir: ${{ inputs.cache-mount-dir }}
 
       # FIXME: Set built images infos in file to be uploaded as artifacts, because github action does not handle job outputs for matrix
       # https://github.com/orgs/community/discussions/26639
