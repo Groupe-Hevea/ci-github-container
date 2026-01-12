@@ -93,6 +93,18 @@ on: # yamllint disable-line rule:truthy
         default: "gha"
         type: string
         required: false
+      extra-cache-from:
+        description: |
+          Extra cache-from parameters to pass to the cache configuration.
+          See https://github.com/int128/docker-build-cache-config-action#inputs.
+        type: string
+        required: false
+      extra-cache-to:
+        description: |
+          Extra cache-to parameters to pass to the cache configuration.
+          See https://github.com/int128/docker-build-cache-config-action#inputs.
+        type: string
+        required: false
       sign:
         description: |
           Sign built images.
@@ -115,6 +127,21 @@ on: # yamllint disable-line rule:truthy
         description: |
           GitHub App private key to generate GitHub token to be passed as build secret env.
           See https://github.com/actions/create-github-app-token.
+        required: false
+      s3-access-key-id:
+        description: |
+          AWS access key ID for S3 cache backend.
+          Used when cache-type is 's3'.
+        required: false
+      s3-secret-access-key:
+        description: |
+          AWS secret access key for S3 cache backend.
+          Used when cache-type is 's3'.
+        required: false
+      s3-session-token:
+        description: |
+          AWS session token for S3 cache backend (optional).
+          Used when cache-type is 's3'.
         required: false
     outputs:
       built-images:
@@ -418,6 +445,11 @@ jobs:
           secret-envs: ${{ steps.prepare-secret-envs.outputs.secret-envs }}
           secrets: ${{ secrets.build-secrets }}
           cache-type: ${{ inputs.cache-type }}
+          extra-cache-from: ${{ inputs.extra-cache-from }}
+          extra-cache-to: ${{ inputs.extra-cache-to }}
+          s3-access-key-id: ${{ secrets.s3-access-key-id }}
+          s3-secret-access-key: ${{ secrets.s3-secret-access-key }}
+          s3-session-token: ${{ secrets.s3-session-token }}
           multi-platform: ${{ matrix.image.multi-platform }}
 
       # FIXME: Set built images infos in file to be uploaded as artifacts, because github action does not handle job outputs for matrix

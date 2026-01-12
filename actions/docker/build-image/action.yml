@@ -87,6 +87,34 @@ inputs:
       See https://docs.docker.com/build/cache/backends.
     default: "gha"
     required: false
+  extra-cache-from:
+    description: |
+      Extra cache-from parameters to pass to the cache configuration.
+      See https://github.com/int128/docker-build-cache-config-action#inputs.
+    required: false
+  extra-cache-to:
+    description: |
+      Extra cache-to parameters to pass to the cache configuration.
+      See https://github.com/int128/docker-build-cache-config-action#inputs.
+    required: false
+  s3-access-key-id:
+    description: |
+      AWS access key ID for S3 cache backend.
+      Used when cache-type is 's3'.
+      Will be set as AWS_ACCESS_KEY_ID environment variable.
+    required: false
+  s3-secret-access-key:
+    description: |
+      AWS secret access key for S3 cache backend.
+      Used when cache-type is 's3'.
+      Will be set as AWS_SECRET_ACCESS_KEY environment variable.
+    required: false
+  s3-session-token:
+    description: |
+      AWS session token for S3 cache backend (optional).
+      Used when cache-type is 's3'.
+      Will be set as AWS_SESSION_TOKEN environment variable.
+    required: false
   multi-platform:
     description: |
       Whether this build participates in a multi-platform image publication.
@@ -257,7 +285,8 @@ runs:
         flavor: ${{ steps.get-docker-config.outputs.cache-flavor }}
         pull-request-cache: true
         cache-type: ${{ inputs.cache-type }}
-        extra-cache-to: "image-manifest=true,oci-mediatypes=true"
+        extra-cache-from: ${{ inputs.extra-cache-from }}
+        extra-cache-to: ${{ inputs.extra-cache-to || 'image-manifest=true,oci-mediatypes=true' }}
 
     - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       id: cache
@@ -282,6 +311,10 @@ runs:
 
     - id: build
       uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+      env:
+        AWS_ACCESS_KEY_ID: ${{ inputs.s3-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.s3-secret-access-key }}
+        AWS_SESSION_TOKEN: ${{ inputs.s3-session-token }}
       with:
         context: ${{ inputs.context }}
         build-args: ${{ inputs.build-args }}
