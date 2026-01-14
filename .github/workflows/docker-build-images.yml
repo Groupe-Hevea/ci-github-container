@@ -112,6 +112,14 @@ on: # yamllint disable-line rule:truthy
         type: boolean
         default: true
         required: false
+      skip-registry-login:
+        description: |
+          Skip registry login step.
+          Set to 'true' when using S3-based registries or other backends that don't require docker login.
+          BuildKit can push directly to S3-compatible registries without authentication via docker/login-action.
+        type: boolean
+        default: false
+        required: false
     secrets:
       oci-registry-password:
         description: |
@@ -451,6 +459,7 @@ jobs:
           s3-secret-access-key: ${{ secrets.s3-secret-access-key }}
           s3-session-token: ${{ secrets.s3-session-token }}
           multi-platform: ${{ matrix.image.multi-platform }}
+          skip-registry-login: ${{ inputs.skip-registry-login }}
 
       # FIXME: Set built images infos in file to be uploaded as artifacts, because github action does not handle job outputs for matrix
       # https://github.com/orgs/community/discussions/26639

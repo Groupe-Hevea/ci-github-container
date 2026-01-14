@@ -122,6 +122,13 @@ inputs:
       When false, the image is pushed with its tags directly.
     default: false
     required: false
+  skip-registry-login:
+    description: |
+      Skip registry login step.
+      Set to 'true' when using S3-based registries or other backends that don't require docker login.
+      BuildKit can push directly to S3-compatible registries without authentication via docker/login-action.
+    default: "false"
+    required: false
 
 outputs:
   built-image:
@@ -159,7 +166,7 @@ runs:
     - id: metadata
       uses: ./self-actions/docker/get-image-metadata
       with:
-        oci-registry: ${{ inputs.oci-registry }}
+        oci-registry: ${{ inputs.skip-registry-login != 'true' && inputs.oci-registry || '' }}
         repository: ${{ inputs.repository }}
         image: ${{ inputs.image }}
         tag: ${{ inputs.tag }}
@@ -303,6 +310,7 @@ runs:
         skip-extraction: ${{ steps.cache.outputs.cache-hit }}
 
     - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+      if: inputs.skip-registry-login != 'true'
       with:
         registry: ${{ inputs.oci-registry }}
         username: ${{ inputs.oci-registry-username }}
