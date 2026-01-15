@@ -105,6 +105,16 @@ on: # yamllint disable-line rule:truthy
           See https://github.com/int128/docker-build-cache-config-action#inputs.
         type: string
         required: false
+      buildkitd-config-inline:
+        description: |
+          Inline BuildKit daemon configuration.
+          See https://github.com/docker/setup-buildx-action#inputs.
+          Example for insecure registry:
+            [registry."my-registry.local:5000"]
+              http = true
+              insecure = true
+        type: string
+        required: false
       sign:
         description: |
           Sign built images.
@@ -458,6 +468,7 @@ jobs:
           s3-access-key-id: ${{ secrets.s3-access-key-id }}
           s3-secret-access-key: ${{ secrets.s3-secret-access-key }}
           s3-session-token: ${{ secrets.s3-session-token }}
+          buildkitd-config-inline: ${{ inputs.buildkitd-config-inline }}
           multi-platform: ${{ matrix.image.multi-platform }}
           skip-registry-login: ${{ inputs.skip-registry-login }}
 
