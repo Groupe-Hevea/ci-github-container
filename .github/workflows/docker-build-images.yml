@@ -115,6 +115,18 @@ on: # yamllint disable-line rule:truthy
               insecure = true
         type: string
         required: false
+      cache-registry:
+        description: |
+          Optional separate registry for Docker build cache.
+          Use this when cache is stored on a different registry than the final image.
+        type: string
+        required: false
+      cache-registry-username:
+        description: |
+          Username for the cache registry.
+          Required if cache-registry is set and requires authentication.
+        type: string
+        required: false
       sign:
         description: |
           Sign built images.
@@ -146,20 +158,10 @@ on: # yamllint disable-line rule:truthy
           GitHub App private key to generate GitHub token to be passed as build secret env.
           See https://github.com/actions/create-github-app-token.
         required: false
-      s3-access-key-id:
+      cache-registry-password:
         description: |
-          AWS access key ID for S3 cache backend.
-          Used when cache-type is 's3'.
-        required: false
-      s3-secret-access-key:
-        description: |
-          AWS secret access key for S3 cache backend.
-          Used when cache-type is 's3'.
-        required: false
-      s3-session-token:
-        description: |
-          AWS session token for S3 cache backend (optional).
-          Used when cache-type is 's3'.
+          Password for the cache registry.
+          Required if cache-registry is set and requires authentication.
         required: false
     outputs:
       built-images:
@@ -465,9 +467,9 @@ jobs:
           cache-type: ${{ inputs.cache-type }}
           extra-cache-from: ${{ inputs.extra-cache-from }}
           extra-cache-to: ${{ inputs.extra-cache-to }}
-          s3-access-key-id: ${{ secrets.s3-access-key-id }}
-          s3-secret-access-key: ${{ secrets.s3-secret-access-key }}
-          s3-session-token: ${{ secrets.s3-session-token }}
+          cache-registry: ${{ inputs.cache-registry }}
+          cache-registry-username: ${{ inputs.cache-registry-username }}
+          cache-registry-password: ${{ secrets.cache-registry-password }}
           buildkitd-config-inline: ${{ inputs.buildkitd-config-inline }}
           multi-platform: ${{ matrix.image.multi-platform }}
           skip-registry-login: ${{ inputs.skip-registry-login }}

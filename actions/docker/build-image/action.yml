@@ -97,23 +97,21 @@ inputs:
       Extra cache-to parameters to pass to the cache configuration.
       See https://github.com/int128/docker-build-cache-config-action#inputs.
     required: false
-  s3-access-key-id:
+  cache-registry:
     description: |
-      AWS access key ID for S3 cache backend.
-      Used when cache-type is 's3'.
-      Will be set as AWS_ACCESS_KEY_ID environment variable.
+      Optional separate registry for Docker build cache.
+      Use this when cache is stored on a different registry than the final image.
+      If not set, cache operations use the main oci-registry.
     required: false
-  s3-secret-access-key:
+  cache-registry-username:
     description: |
-      AWS secret access key for S3 cache backend.
-      Used when cache-type is 's3'.
-      Will be set as AWS_SECRET_ACCESS_KEY environment variable.
+      Username for the cache registry.
+      Required if cache-registry is set and requires authentication.
     required: false
-  s3-session-token:
+  cache-registry-password:
     description: |
-      AWS session token for S3 cache backend (optional).
-      Used when cache-type is 's3'.
-      Will be set as AWS_SESSION_TOKEN environment variable.
+      Password for the cache registry.
+      Required if cache-registry is set and requires authentication.
     required: false
   buildkitd-config-inline:
     description: |
@@ -325,14 +323,17 @@ runs:
         registry: ${{ inputs.oci-registry }}
         username: ${{ inputs.oci-registry-username }}
         password: ${{ inputs.oci-registry-password }}
+
+    - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+      if: inputs.cache-registry
+      with:
+        registry: ${{ inputs.cache-registry }}
+        username: ${{ inputs.cache-registry-username }}
+        password: ${{ inputs.cache-registry-password }}
     # jscpd:ignore-end
 
     - id: build
       uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-      env:
-        AWS_ACCESS_KEY_ID: ${{ inputs.s3-access-key-id }}
-        AWS_SECRET_ACCESS_KEY: ${{ inputs.s3-secret-access-key }}
-        AWS_SESSION_TOKEN: ${{ inputs.s3-session-token }}
       with:
         context: ${{ inputs.context }}
         build-args: ${{ inputs.build-args }}
