@@ -216,7 +216,19 @@ runs:
 
           const cacheType = `${{ inputs.cache-type }}`.trim();
           const metadataImage = `${{ steps.metadata.outputs.image }}`;
-          const cacheImage = cacheType === 'registry' ? `${metadataImage}/cache` : metadataImage;
+          const cacheRegistry = `${{ inputs.cache-registry }}`.trim();
+
+          let cacheImage;
+          if (cacheRegistry) {
+            // Use separate cache registry: replace the registry part of the image
+            const imageParts = metadataImage.split('/');
+            // Remove the original registry (first part) and join with cache registry
+            imageParts.shift();
+            cacheImage = `${cacheRegistry}/${imageParts.join('/')}/cache`;
+          } else {
+            // Use main registry for cache
+            cacheImage = cacheType === 'registry' ? `${metadataImage}/cache` : metadataImage;
+          }
           core.setOutput('cache-image', cacheImage);
 
           try {
