@@ -103,6 +103,12 @@ on: # yamllint disable-line rule:truthy
               insecure = true
         type: string
         required: false
+      enable-cache-mount:
+        description: |
+          Whether to enable cache mount using reproducible-containers/buildkit-cache-dance action.
+        required: false
+        type: string
+        default: "true"
       cache-registry:
         description: |
           Optional separate registry for Docker build cache.
@@ -444,6 +450,7 @@ jobs:
           platform: ${{ matrix.image.platform }}
           secret-envs: ${{ steps.prepare-secret-envs.outputs.secret-envs }}
           secrets: ${{ secrets.build-secrets }}
+          enable-cache-mount: ${{ inputs.enable-cache-mount }}
           cache-type: ${{ inputs.cache-type }}
           cache-registry: ${{ inputs.cache-registry }}
           cache-registry-username: ${{ inputs.cache-registry-username }}
